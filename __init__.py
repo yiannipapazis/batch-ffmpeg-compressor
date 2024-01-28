@@ -115,13 +115,9 @@ class VideoCompressor(QWidget):
             self.file = file
             self.path = path
         
-        def handle_readyReadStandardOutput(self):
-            text = self._process.readAllStandardOutput().data().decode()
-            logging.debug(text.strip())
-        
         class ProcessThread(QtCore.QThread):
             # Define a signal to emit the output of the QProcess
-            output = QtCore.pyqtSignal(str)
+            output = QtCore.Signal(str)
 
             def __init__(self, command):
                 super().__init__()
@@ -131,13 +127,19 @@ class VideoCompressor(QWidget):
                 # Create a QProcess object and connect its output to the signal
                 self.process = QtCore.QProcess()
                 self.process.readyReadStandardOutput.connect(self.handleOutput)
-                self.process.start(self.command)
+                self.process.readyReadStandardError.connect(self.handleOutput)
+                logging.debug("Running command " + self.command)
+                self.process.startCommand(self.command)
+                self.process.waitForFinished()
+                logging.debug(self.process.readAll())
 
             def handleOutput(self):
                 # Read the output and emit the signal
                 data = self.process.readAllStandardOutput().data().decode()
                 self.output.emit(data)
+                logging.debug("Yahoo")
                 logging.debug(data)
+                logging.debug(self.process.readAll().fromStdString())
         
         def compress(self, bitrate, skip_existing=False):
             video_path = os.path.join(self.path,self.file)
@@ -154,24 +156,12 @@ class VideoCompressor(QWidget):
                 
                 os.makedirs(os.path.dirname(compressed_path), exist_ok=True)
                 
-                self._process = QtCore.QProcess(parent)
-                self._process.readyReadStandardOutput.connect(
-                    self.handle_readyReadStandardOutput
-                )
-                
-                self._process.setProgram("ffmpeg")
-                #process.setArguments(f"-y -i {video_path} -b:v {bitrate} {compressed_path}")
-                self._process.setArguments(['-i', video_path, '-c:v', 'libx264', '-crf', '23', '-preset', 'medium', '-c:a', 'copy', compressed_path])
+                command = f'ffmpeg -i {video_path} -y -c:v libx264 -crf 23 -preset medium -c:a copy {compressed_path}'
+                #self.thread = self.ProcessThread(command)
+                #self.thread = self.ProcessThread("ipconfig")
+                #self.thread.output.connect(lambda: self.handle_output(self.thread.output))
+                #self.thread.start()
 
-                self._process.start()
-                self._process.waitForFinished()
-
-                if self._process.exitCode() == 0:
-                    logging.info('Command completed successfully')
-                else:
-                    logging.error(f'Command failed with exit code {self._process.exitCode()}')
-                
-                """
                 ffmpeg= (
                     FFmpeg()
                         .option('y')
@@ -185,7 +175,6 @@ class VideoCompressor(QWidget):
                     logging.info(progress)
                 
                 ffmpeg.execute()
-                """
 
                 # Set the creation time
                 subprocess.run(f"powershell -command (Get-Item '{compressed_path}').CreationTime='{creation_time}'")
