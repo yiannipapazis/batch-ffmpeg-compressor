@@ -39,6 +39,9 @@ class VideoCompressor(QWidget):
 
         self.select_folder_btn = QtWidgets.QPushButton("Select Folder")
         self.select_folder_btn.clicked.connect(self.select_folder)
+
+        self.select_files_btn = QtWidgets.QPushButton("Select Files")
+        self.select_files_btn.clicked.connect(self.select_files)
         self.list_widget = QtWidgets.QListWidget()
 
         compress_layout = QtWidgets.QHBoxLayout()
@@ -53,9 +56,16 @@ class VideoCompressor(QWidget):
         compress_layout.addWidget(self.skip_existing)
 
         self.layout.addWidget(self.select_folder_btn)
+        #self.layout.addWidget(self.select_files_btn)
         self.layout.addWidget(self.list_widget)
         self.layout.addLayout(compress_layout)
         self.layout.addWidget(self.log_widget.widget)
+
+        self.btns = (
+            self.select_folder_btn,
+            self.select_files_btn,
+            self.compress_btn
+        )
 
     def select_folder(self):
         self.files=[]
@@ -68,6 +78,30 @@ class VideoCompressor(QWidget):
         if dialog.exec() == QFileDialog.Accepted:
             selected_folder = dialog.selectedFiles()[0]
 
+            self.files = [f for f in os.listdir(selected_folder) if f.endswith((".mp4",".wmv","avi"))]
+        
+            logging.info("Founds %s files." % len(self.files))
+
+            logger = logging.getLogger()
+            for file in self.files:
+                item = self.FileItem(file,selected_folder)
+                item.setText(file)
+                self.list_widget.addItem(item)
+
+    def select_files(self):
+        self.files=[]
+        # Remove items
+        for i in range(self.list_widget.count()):
+            self.list_widget.takeItem(0)
+            
+        dialog = QFileDialog()
+        dialog.setNameFilter("Video Files (*.mp4, *.avi, *.wmv)")
+        file, filter = dialog.getOpenFileName()
+        """
+        dialog.filter()
+        if dialog.exec() == QFileDialog.Accepted:
+            selected_folder = dialog.selectedFiles()[0]
+
             self.files = [f for f in os.listdir(selected_folder) if f.endswith((".mp4",".wmv"))]
         
             logging.info("Founds %s files." % len(self.files))
@@ -77,6 +111,7 @@ class VideoCompressor(QWidget):
                 item = self.FileItem(file,selected_folder)
                 item.setText(file)
                 self.list_widget.addItem(item)
+        """
     
     def compress_videos(self):
         
@@ -103,9 +138,9 @@ class VideoCompressor(QWidget):
             super().__init__()
             self.app = app
 
-        def run(self):            
-            self.app.compress_btn.setEnabled(False)
-            self.app.select_folder_btn.setEnabled(False)
+        def run(self):
+            for btn in self.app.btns:
+                btn.setEnabled(False)            
 
             total = self.app.list_widget.count()
             for i in range(total):
@@ -117,7 +152,8 @@ class VideoCompressor(QWidget):
                     pass
                 else:
                     # Get the creation time of the input file
-                    creation_time = subprocess.check_output(['powershell', '-command', f'(Get-Item "{video_path}").CreationTime']).decode().strip()
+                    creation_time = subprocess.check_output(['powershell', '-command', f'(Get-Item "{video_path}").LastWriteTime']).decode().strip()
+                    #creation_time = subprocess.check_output(['powershell', '-command', f'(Get-Item "{video_path}").CreationTime']).decode().strip()
                     self.output.emit(f"Creation time is {creation_time}")
                     
                     os.makedirs(os.path.dirname(compressed_path), exist_ok=True)
@@ -138,13 +174,13 @@ class VideoCompressor(QWidget):
 
                     # Set the creation time
                     subprocess.run(f"powershell -command (Get-Item '{compressed_path}').CreationTime='{creation_time}'")
+                    subprocess.run(f"powershell -command (Get-Item '{compressed_path}').LastWriteTime='{creation_time}'")
                 item.setBackground(QtGui.QColor("green"))
 
             self.output.emit("Complete!")
 
-            self.app.select_folder_btn.setEnabled(True)
-            self.app.compress_btn.setEnabled(True)
-
+            for btn in self.app.btns:
+                btn.setEnabled(True)            
     class FileItem(QtWidgets.QListWidgetItem):
         def __init__(self, file, path):
             super().__init__()
@@ -153,7 +189,7 @@ class VideoCompressor(QWidget):
         
         def get_paths(self):
             video_path = os.path.join(self.path,self.file)
-            compressed_path = os.path.join(self.path,"compressed",self.file)
+            compressed_path = os.path.join(self.path,"compressed",os.path.splitext(self.file)[0] + ".mp4")
             file = self.file
             return (video_path, compressed_path, file)
 
